@@ -56,14 +56,14 @@ subroutine contract_gradi_Lik(params, constants, isph, sigma, xi, basloc, dbsloc
           vij  = params % csph(:,isph) + &
               & params % rsph(isph)*constants % cgrid(:,ig) - &
               & params % csph(:,jsph)
+          !vvij = sqrt(dot_product(vij,vij))
           vvij = dnrm2(3, vij, 1)
           tij  = vvij/params % rsph(jsph)
+
           if (tij.ge.thigh) cycle
-          if (tij.ne.zero) then
-              sij = vij/vvij
-          else
-              sij = one
-          end if
+
+          sij  = vij/vvij
+          !call dbasis(sij,basloc,dbsloc,vplm,vcos,vsin)
           call dbasis(params, constants, sij, basloc, dbsloc, vplm, vcos, vsin)
           alp  = zero
           t    = one
@@ -130,15 +130,16 @@ subroutine contract_gradi_Lji(params, constants, isph, sigma, xi, basloc, dbsloc
           vji  = params % csph(:,jsph) + &
               & params % rsph(jsph)*constants % cgrid(:,ig) - &
               & params % csph(:,isph)
+          !vvji = sqrt(dot_product(vji,vji))
           vvji = dnrm2(3, vji, 1)
           tji  = vvji/params % rsph(isph)
+
           if (tji.gt.thigh) cycle
-          if (tji.ne.zero) then
-              sji = vji/vvji
-          else
-              sji = one
-          end if
+
+          sji  = vji/vvji
+          !call dbasis(sji,basloc,dbsloc,vplm,vcos,vsin)
           call dbasis(params, constants, sji, basloc, dbsloc, vplm, vcos, vsin)
+
           alp = zero
           t   = one
           do l = 1, params % lmax
@@ -406,11 +407,7 @@ subroutine contract_gradi_Bik(params, constants, isph, Xe, Xadj_e, force)
             rj = params % rsph(jsph)
             if (tij.ge.thigh) cycle
             ! Computation of modified spherical Bessel function values
-            if (tij.ne.zero) then
-                sij = vij/rijn
-            else
-                sij = one
-            end if
+            sij  = vij/rijn
             vtij = vij*params % kappa
             call fmm_l2p_bessel_grad(vtij, params % rsph(jsph)*params % kappa, &
                 & params % lmax, constants % vscales, params % kappa, &
@@ -507,12 +504,10 @@ subroutine contract_gradi_Bji(params, constants, isph, Xe, Xadj_e, force)
             rjin = dnrm2(3, vji, 1)
             ri = params % rsph(isph)
             tji  = rjin/ri
+
             if (tji.gt.thigh) cycle
-            if (tji.ne.zero) then
-                sji = vji/rjin
-            else
-                sji = one
-            end if
+
+            sji  = vji/rjin
             vtji = vji*params % kappa
             call fmm_l2p_bessel_grad(vtji, params % rsph(isph)*params % kappa, &
                 & params % lmax, constants % vscales, params % kappa, &

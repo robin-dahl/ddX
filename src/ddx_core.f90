@@ -451,24 +451,24 @@ subroutine allocate_state(params, constants, state, ddx_error)
     type(ddx_error_type), intent(inout) :: ddx_error
     integer :: istatus
 
-    allocate(state % psi(constants % nbasis, params % nsph), stat=istatus)
+    allocate(state % psi(constants % nbasis, params % nsph), stat=istatus, source=0.0_dp)
     if (istatus .ne. 0) then
         call update_error(ddx_error, "allocate_state: `psi` allocation failed")
         return
     end if
-    allocate(state % phi_cav(constants % ncav), stat=istatus)
+    allocate(state % phi_cav(constants % ncav), stat=istatus, source=0.0_dp)
     if (istatus .ne. 0) then
         call update_error(ddx_error, "allocate_state: `phi_cav` allocation failed")
         return
     end if
-    allocate(state % gradphi_cav(3, constants % ncav), stat=istatus)
+    allocate(state % gradphi_cav(3, constants % ncav), stat=istatus, source=0.0_dp)
     if (istatus .ne. 0) then
         call update_error(ddx_error, &
             & "allocate_state: `gradphi_cav` allocation failed")
         return
     end if
     allocate(state % q(constants % nbasis, &
-        & params % nsph), stat=istatus)
+        & params % nsph), stat=istatus, source=0.0_dp)
     if (istatus .ne. 0) then
         call update_error(ddx_error, "allocate_state: `q` " // &
             & "allocation failed")
@@ -478,55 +478,55 @@ subroutine allocate_state(params, constants, state, ddx_error)
     ! COSMO model
     if (params % model .eq. 1) then
         allocate(state % phi_grid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phi(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % xs(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % xs_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % s(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `s` " // &
             & "allocation failed")
             return
         end if
         allocate(state % s_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `s_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % sgrid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `sgrid` " // &
                 & "allocation failed")
             return
         end if
-        allocate(state % zeta(constants % ncav), stat=istatus)
+        allocate(state % zeta(constants % ncav), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `zeta` " // &
                 & "allocation failed")
@@ -535,111 +535,111 @@ subroutine allocate_state(params, constants, state, ddx_error)
     ! PCM model
     else if (params % model .eq. 2) then
         allocate(state % phi_grid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phi(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phiinf(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phiinf` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phieps(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phieps` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phieps_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % xs(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % xs_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % s(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `s` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % s_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `xs_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % sgrid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `sgrid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % y(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `y` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % y_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `y_rel_diff` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % ygrid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `ygrid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % g(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `g` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % qgrid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `qgrid` " // &
                 & "allocation failed")
             return
         end if
-        allocate(state % zeta(constants % ncav), stat=istatus)
+        allocate(state % zeta(constants % ncav), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `zeta` " // &
                 & "allocation failed")
@@ -648,20 +648,20 @@ subroutine allocate_state(params, constants, state, ddx_error)
     ! LPB model
     else if (params % model .eq. 3) then
         allocate(state % phi_grid(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phi(constants % nbasis, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi` " // &
                 & "allocation failed")
             return
         end if
-        allocate(state % zeta(constants % ncav), stat=istatus)
+        allocate(state % zeta(constants % ncav), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `zeta` " // &
                 & "allocation failed")
@@ -669,7 +669,7 @@ subroutine allocate_state(params, constants, state, ddx_error)
             return
         end if
         allocate(state % x_lpb_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_lpb_rel_diff` " // &
                 & "allocation failed")
@@ -677,7 +677,7 @@ subroutine allocate_state(params, constants, state, ddx_error)
         end if
         allocate(state % rhs_lpb(constants % nbasis, &
             & params % nsph, 2), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `rhs_lpb` " // &
                 & "allocation failed")
@@ -685,7 +685,7 @@ subroutine allocate_state(params, constants, state, ddx_error)
         end if
         allocate(state % rhs_adj_lpb(constants % nbasis, &
             & params % nsph, 2), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `rhs_adj_lpb` " // &
                 & "allocation failed")
@@ -693,69 +693,69 @@ subroutine allocate_state(params, constants, state, ddx_error)
         end if
         allocate(state % x_lpb(constants % nbasis, &
             & params % nsph, 2), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_lpb` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % x_adj_lpb(constants % nbasis, &
-            & params % nsph, 2), stat=istatus)
+            & params % nsph, 2), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_adj_lpb` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % x_adj_lpb_rel_diff(params % maxiter), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, &
                 & "allocate_state: `x_adj_lpb_rel_diff` allocation failed")
             return
         end if
         allocate(state % g_lpb(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `g_lpb` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % f_lpb(params % ngrid, &
-            & params % nsph), stat=istatus)
+            & params % nsph), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `f_lpb` " // &
                 & "allocation failed")
             return
         end if
-        allocate(state % zeta_dip(3, constants % ncav), stat=istatus)
+        allocate(state % zeta_dip(3, constants % ncav), stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `zeta_dip` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % x_adj_re_grid(params % ngrid, params % nsph), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_adj_re_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % x_adj_r_grid(params % ngrid, params % nsph), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_adj_r_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % x_adj_e_grid(params % ngrid, params % nsph), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `x_adj_e_grid` " // &
                 & "allocation failed")
             return
         end if
         allocate(state % phi_n(params % ngrid, params % nsph), &
-            & stat=istatus)
+            & stat=istatus, source=0.0_dp)
         if (istatus .ne. 0) then
             call update_error(ddx_error, "allocate_state: `phi_n` " // &
                 & "allocation failed")
@@ -763,6 +763,7 @@ subroutine allocate_state(params, constants, state, ddx_error)
         end if
     end if
 end subroutine allocate_state
+
 
 
 !> Deallocate the ddx_state object
@@ -1168,7 +1169,6 @@ subroutine dbasis(params, constants, x, basloc, dbsloc, vplm, vcos, vsin)
     integer :: l, m, ind
     real(dp)  :: cthe, sthe, cphi, sphi, plm, fln, pp1, pm1, pp, VC, VS
     real(dp)  :: et(3), ep(3)
-
     !     get cos(\theta), sin(\theta), cos(\phi) and sin(\phi) from the cartesian
     !     coordinates of x.
     cthe = x(3)
@@ -1497,7 +1497,7 @@ subroutine calcv(params, constants, isph, pot, sigma, work)
                 vvij = sqrt( dot_product( vij, vij ) )
                 tij  = vvij / params % rsph(jsph)
                 ! point is INSIDE j-sphere
-                if (tij.lt.thigh) then
+                if (tij.lt.thigh .and. tij.gt.zero) then
                     xij = fsw(tij, params % se, params % eta)
                     if (constants % fi(its,isph).gt.one) then
                         oij = xij / constants % fi(its,isph)
