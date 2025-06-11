@@ -56,14 +56,14 @@ subroutine contract_gradi_Lik(params, constants, isph, sigma, xi, basloc, dbsloc
           vij  = params % csph(:,isph) + &
               & params % rsph(isph)*constants % cgrid(:,ig) - &
               & params % csph(:,jsph)
+          !vvij = sqrt(dot_product(vij,vij))
           vvij = dnrm2(3, vij, 1)
           tij  = vvij/params % rsph(jsph)
+
           if (tij.ge.thigh) cycle
-          if (tij.ne.zero) then
-              sij = vij/vvij
-          else
-              sij = one
-          end if
+
+          sij  = vij/vvij
+          !call dbasis(sij,basloc,dbsloc,vplm,vcos,vsin)
           call dbasis(params, constants, sij, basloc, dbsloc, vplm, vcos, vsin)
           alp  = zero
           t    = one
@@ -130,15 +130,16 @@ subroutine contract_gradi_Lji(params, constants, isph, sigma, xi, basloc, dbsloc
           vji  = params % csph(:,jsph) + &
               & params % rsph(jsph)*constants % cgrid(:,ig) - &
               & params % csph(:,isph)
+          !vvji = sqrt(dot_product(vji,vji))
           vvji = dnrm2(3, vji, 1)
           tji  = vvji/params % rsph(isph)
+
           if (tji.gt.thigh) cycle
-          if (tji.ne.zero) then
-              sji = vji/vvji
-          else
-              sji = one
-          end if
+
+          sji  = vji/vvji
+          !call dbasis(sji,basloc,dbsloc,vplm,vcos,vsin)
           call dbasis(params, constants, sji, basloc, dbsloc, vplm, vcos, vsin)
+
           alp = zero
           t   = one
           do l = 1, params % lmax
@@ -406,11 +407,7 @@ subroutine contract_gradi_Bik(params, constants, isph, Xe, Xadj_e, force)
             rj = params % rsph(jsph)
             if (tij.ge.thigh) cycle
             ! Computation of modified spherical Bessel function values
-            if (tij.ne.zero) then
-                sij = vij/rijn
-            else
-                sij = one
-            end if
+            sij  = vij/rijn
             vtij = vij*params % kappa
             call fmm_l2p_bessel_grad(vtij, params % rsph(jsph)*params % kappa, &
                 & params % lmax, constants % vscales, params % kappa, &
@@ -507,12 +504,10 @@ subroutine contract_gradi_Bji(params, constants, isph, Xe, Xadj_e, force)
             rjin = dnrm2(3, vji, 1)
             ri = params % rsph(isph)
             tji  = rjin/ri
+
             if (tji.gt.thigh) cycle
-            if (tji.ne.zero) then
-                sji = vji/rjin
-            else
-                sji = one
-            end if
+
+            sji  = vji/rjin
             vtji = vji*params % kappa
             call fmm_l2p_bessel_grad(vtji, params % rsph(isph)*params % kappa, &
                 & params % lmax, constants % vscales, params % kappa, &
@@ -2236,5 +2231,820 @@ subroutine zeta_grad(params, constants, state, e_cav, forces)
         end do
     end do
 end subroutine zeta_grad
+
+
+
+
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% GRADIENTS FOR DYNAMIC RADII
+
+subroutine get_dgriddr(ddx_data, xyz, rvdw, grid, drvdwdr, dgriddr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: xyz(:,:)
+   real(dp), intent(in) :: rvdw(:)
+   real(dp), intent(in) :: drvdwdr(:,:,:)
+   real(dp), intent(in) :: grid(:,:) 
+
+   real(dp), intent(out) :: dgriddr(:,:,:,:,:)  !(nsph, 3, nsph, ddx_data%params%ngrid, 3)
+                                  !  I ,x/y/z, A,     g             , dr
+
+   integer :: isph, jsph, igrid, k, i, asph
+
+   real(dp) :: one_vec(3,3)
+
+   one_vec = reshape([1.0_dp, 0.0_dp, 0.0_dp, &
+                      0.0_dp, 1.0_dp, 0.0_dp, &
+                      0.0_dp, 0.0_dp, 1.0_dp], [3,3])
+
+   do igrid=1,  ddx_data%params%ngrid
+      do isph = 1 , ddx_data%params%nsph
+
+         ! i \in I
+         ! if (ddx_data%constants%fi(igrid, jsph) .gt. zero) then
+
+            do asph = 1, ddx_data%params%nsph
+               do k = 1, 3
+
+                  if (isph == asph) then
+
+                     dgriddr(asph, k, isph, igrid, :) = 1.0_dp/rvdw(isph) * drvdwdr(k, asph, isph) * &
+                        & (grid(:,igrid) - xyz(:, isph)) + one_vec(k,:)
+                        
+                  else ! I/=A -> grid point not on atom after which we derive
+                     
+                     dgriddr(asph, k, isph, igrid, :) =  1.0_dp/rvdw(isph) * drvdwdr(k, asph, isph) * &
+                        & (grid(:,igrid) - xyz(:, isph))
+
+                  end if
+
+               end do
+            end do
+
+         ! end if 
+
+      end do
+   end do
+
+end subroutine get_dgriddr
+
+
+subroutine get_dvdr(ddx_data, rvdw, grid, drvdwdr, dgriddr, dvdr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: rvdw(:)
+   real(dp), intent(in) :: drvdwdr(:,:,:) 
+   real(dp), intent(in) :: grid(:,:) 
+   real(dp), intent(in) :: dgriddr(:,:,:,:,:) 
+
+   real(dp), intent(out) :: dvdr(:,:,:,:,:,:)
+
+   integer :: isph, asph, bsph, k, igrid
+
+   real(dp) :: one_vec(3,3)
+
+
+   one_vec = reshape([1.0_dp, 0.0_dp, 0.0_dp, &
+                      0.0_dp, 1.0_dp, 0.0_dp, &
+                      0.0_dp, 0.0_dp, 1.0_dp], [3,3])
+
+
+
+   do isph = 1, ddx_data%params%nsph 
+      do k = 1, 3
+         do asph = 1, ddx_data%params%nsph
+            do bsph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+                  
+                  ! if ((isph == asph) .and. (isph /= bsph)) then
+                  !    dvdr(isph, k, asph, bsph, igrid, :) =  one_vec(k,:) &
+                  !       & + drvdwdr(k, isph, asph) * grid(:,igrid) &
+                  !       & + rvdw(asph) * dgriddr(asph, k, asph, igrid, :)              
+                  
+                  ! else if ((isph == bsph) .and. (isph /= asph)) then
+                  !    dvdr(isph, k, asph, bsph, igrid, :) = -1.0_dp*one_vec(k,:) + drvdwdr(k, bsph, asph) &
+                  !       &  * grid(:,igrid) + rvdw(asph) * dgriddr(bsph, k, bsph, igrid, :) 
+
+                  ! else if ((isph == asph) .and. (isph == bsph)) then
+                  !    dvdr(isph, k, asph, bsph, igrid, :) = drvdwdr(k, asph, asph) * grid(:,igrid) &
+                  !       & + rvdw(asph) * dgriddr(asph, k, asph, igrid, :)
+
+                  ! else !if (jsph .neq. asph .and. jsph .neq. bsph) then
+                  !    dvdr(isph, k, asph, bsph, igrid, :) = drvdwdr(k, isph, asph) * grid(:,igrid) &
+                  !       & + rvdw(asph) * dgriddr(isph, k, isph, igrid, :)
+                  ! end if
+
+
+                  if ((isph == asph) .and. (isph /= bsph)) then
+                     dvdr(isph, k, asph, bsph, igrid, :) =  one_vec(k,:) &
+                        & + drvdwdr(k, isph, asph) * grid(:,igrid)              
+                  
+                  else if ((isph == bsph) .and. (isph /= asph)) then
+                     dvdr(isph, k, asph, bsph, igrid, :) = -1.0_dp*one_vec(k,:) + drvdwdr(k, bsph, asph) &
+                        &  *grid(:,igrid) 
+
+                  else if ((isph == asph) .and. (isph == bsph)) then
+                     dvdr(isph, k, asph, bsph, igrid, :) = drvdwdr(k, asph, asph) * grid(:,igrid) 
+
+                  else ! if ((jsph /= asph) .and. (jsph /= bsph)) then
+                     dvdr(isph, k, asph, bsph, igrid, :) = drvdwdr(k, isph, asph) * grid(:,igrid)
+                  end if
+
+               end do 
+            end do 
+         end do
+      end do
+   end do
+
+
+end subroutine get_dvdr
+
+
+
+
+
+subroutine get_dtdr(ddx_data, rvdw, v_tensor, vv_tensor, drvdwdr, dvdr, dtdr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: rvdw(:)
+   real(dp), intent(in) :: v_tensor(:,:,:,:)
+   real(dp), intent(in) :: vv_tensor(:,:,:)
+   real(dp), intent(in) :: drvdwdr(:,:,:) 
+   real(dp), intent(in) :: dvdr(:,:,:,:,:,:)
+
+   real(dp), intent(out) :: dtdr(:,:,:,:,:)
+
+   integer :: isph, asph, bsph, k, igrid
+
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         do asph = 1, ddx_data%params%nsph
+            do bsph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+
+                  dtdr(isph, k, asph, bsph, igrid) = 1.0_dp/(rvdw(bsph) * vv_tensor(asph, bsph, igrid)) &
+                     & * dot_product(v_tensor(asph, bsph, igrid, :), dvdr(isph, k, asph, bsph, igrid, :)) &
+                     & - vv_tensor(asph, bsph, igrid) / (rvdw(bsph)**2) * drvdwdr(k, isph, bsph)
+
+               end do
+            end do
+         end do
+      end do
+   end do
+
+
+end subroutine get_dtdr
+
+
+subroutine get_duidr(ddx_data, t_tensor, chi_tensor, dtdr, dwdr, dfidr, duidr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: t_tensor(:,:,:)
+   real(dp), intent(in) :: chi_tensor(:,:,:)
+   real(dp), intent(in) :: dtdr(:,:,:,:,:)
+
+   real(dp), intent(out) :: dwdr(:,:,:,:,:)
+   real(dp), allocatable, intent(out) :: dfidr(:,:,:,:)
+   real(dp), intent(out) :: duidr(:,:,:,:)
+   
+   real(dp), allocatable:: dchidr(:,:,:,:,:)
+
+   real(dp) :: eta
+   real(dp), allocatable :: fi(:,:)
+   integer :: isph, asph, bsph, k, igrid
+
+   eta = ddx_data%params%eta
+   
+   allocate(fi(ddx_data%params%ngrid, ddx_data%params%nsph), source=0.0_dp)
+   fi = ddx_data%constants%fi
+
+
+   allocate(dchidr(ddx_data%params%nsph, 3, ddx_data%params%nsph, ddx_data%params%nsph, ddx_data%params%ngrid), &
+      & source=0.0_dp)
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         do asph = 1, ddx_data%params%nsph
+            do bsph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+
+                  ! if (t_tensor(asph, bsph, igrid) <= (1.0_dp-eta)) then
+                  !    dchidr(isph, k, asph, bsph, igrid) = 0.0_dp
+                  ! else if (t_tensor(asph, bsph, igrid) >= 1.0_dp) then
+                  !    dchidr(isph, k, asph, bsph, igrid) = 0.0_dp
+                  ! else
+                  !    dchidr(isph, k, asph, bsph, igrid) = -30.0_dp/(eta**5)* &
+                  !    & ((1.0_dp - t_tensor(asph, bsph, igrid))*(t_tensor(asph, bsph, igrid) + eta - 1.0_dp))**2 &
+                  !    & * dtdr(isph, k, asph, bsph, igrid)
+                  if (((1.0_dp-eta) < t_tensor(asph, bsph, igrid)) .and. (t_tensor(asph, bsph, igrid) < 1.0_dp)) then
+                     ! dchidr(isph, k, asph, bsph, igrid) = -eta**(-5) * 30.0_dp*(t_tensor(asph, bsph, igrid)-1.0_dp)**2 &
+                     !    & * (t_tensor(asph, bsph, igrid) + eta - 1.0_dp)**2 * dtdr(isph, k, asph, bsph, igrid)
+                     dchidr(isph, k, asph, bsph, igrid) = -30.0_dp/(eta**5)* &
+                        & ((1.0_dp - t_tensor(asph, bsph, igrid))*(t_tensor(asph, bsph, igrid) + eta - 1.0_dp))**2 &
+                        & * dtdr(isph, k, asph, bsph, igrid)
+                  else
+                     dchidr(isph, k, asph, bsph, igrid) = 0.0_dp
+                  end if
+
+               end do
+            end do
+         end do
+      end do
+   end do
+
+   
+   allocate(dfidr(ddx_data%params%nsph, 3, ddx_data%params%nsph, ddx_data%params%ngrid), source=0.0_dp)
+   do bsph = 1, ddx_data%params%nsph
+      dfidr(:, :, :, :) = dfidr(:, :, :, :) + dchidr(:, :, :, bsph, :)
+   end do
+
+   
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         do asph = 1, ddx_data%params%nsph
+            do bsph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+
+                  if (ddx_data%constants%fi(igrid, asph) <= one) then
+                     dwdr(isph, k, asph, bsph, igrid) = dchidr(isph, k, asph, bsph, igrid)
+                     duidr(isph, k, asph, igrid) = duidr(isph, k, asph, igrid) - dwdr(isph, k, asph, bsph, igrid)
+                  else if (ddx_data%constants%fi(igrid, asph) == zero) then
+                     dwdr(isph, k, asph, bsph, igrid) = 0.0_dp
+                     duidr(isph, k, asph, igrid) = duidr(isph, k, asph, igrid) - dwdr(isph, k, asph, bsph, igrid)
+                  
+                  else 
+                     dwdr(isph, k, asph, bsph, igrid) = -chi_tensor(asph, bsph, igrid) / fi(igrid, asph)**2 &
+                        & * dfidr(isph, k, asph, igrid) + 1/fi(igrid, asph) * dchidr(isph, k, asph, bsph, igrid)
+                     duidr(isph, k, asph, igrid) = duidr(isph, k, asph, igrid) - dwdr(isph, k, asph, bsph, igrid)
+                  end if
+
+               end do
+            end do
+         end do
+      end do
+   end do
+
+end subroutine get_duidr
+
+
+subroutine get_dphidr(ddx_data, qat, v_tensor, vv_tensor, dvdr, dphidr, dqdr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: qat(:)
+   real(dp), intent(in) :: v_tensor(:,:,:,:)
+   real(dp), intent(in) :: vv_tensor(:,:,:)
+   real(dp), intent(in) :: dvdr(:,:,:,:,:,:)
+
+   real(dp), intent(out) :: dphidr(:,:,:)
+
+   real(dp), intent(in), optional :: dqdr(:,:,:)
+   
+   integer :: isph, asph, bsph, k, igrid, i
+
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         i = 0
+         do asph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+                  
+                  if (ddx_data%constants%ui(igrid, asph) == zero) cycle ! Disregard buried grid points
+                  
+                  i = i + 1
+
+                  do bsph = 1, ddx_data%params%nsph
+                     dphidr(isph, k, i) = dphidr(isph, k, i) &
+                        ! & + dqdr(isph, k, bsph) / vv_tensor(asph, bsph, igrid) &
+                        & - qat(bsph)/vv_tensor(asph, bsph, igrid)**3 &
+                        & * dot_product(v_tensor(asph, bsph, igrid, :), dvdr(isph, k, asph, bsph, igrid, :))
+                  end do
+
+               end do
+            end do
+      end do
+   end do
+
+
+end subroutine get_dphidr  
+
+
+
+subroutine get_dgdr(ddx_data, electrostatics, qat, duidr, dphidr, dgdr)
+   type(ddx_type), intent(in) :: ddx_data
+   type(ddx_electrostatics_type) :: electrostatics
+   real(dp), intent(in) :: qat(:)
+   real(dp), intent(in) :: duidr(:,:,:,:)
+   real(dp), intent(out) :: dphidr(:,:,:)
+
+   real(dp), intent(out) :: dgdr(:,:,:,:)
+
+   integer :: isph, asph, bsph, k, igrid, i, ibasis
+
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         i = 0
+         do asph = 1, ddx_data%params%nsph
+            do igrid = 1, ddx_data%params%ngrid
+
+               if (ddx_data%constants%ui(igrid, asph) == zero) cycle ! Disregard buried grid points
+               i = i + 1
+
+               do ibasis = 1, ddx_data%constants%nbasis
+               dgdr(isph, k, ibasis, asph) = dgdr(isph, k, ibasis, asph) &
+                  & - ddx_data%constants%vwgrid(ibasis, igrid) * duidr(isph, k, asph, igrid) * electrostatics%phi_cav(i) &
+                  & - ddx_data%constants%vwgrid(ibasis, igrid) * ddx_data%constants%ui(igrid, asph) * dphidr(isph, k, i)
+               end do
+
+            end do
+         end do
+      end do
+   end do
+
+
+end subroutine get_dgdr
+
+
+subroutine get_dsdr(ddx_data, v_tensor, vv_tensor, dvdr, dsdr)
+   type(ddx_type), intent(in) :: ddx_data
+   real(dp), intent(in) :: v_tensor(:,:,:,:)
+   real(dp), intent(in) :: vv_tensor(:,:,:)
+   real(dp), intent(in) :: dvdr(:,:,:,:,:,:)
+   
+   real(dp), intent(out) :: dsdr(:,:,:,:,:,:)
+   
+   integer :: isph, asph, bsph, k, igrid
+   
+   do isph = 1, ddx_data%params%nsph
+      do k = 1, 3
+         do asph = 1, ddx_data%params%nsph
+            do bsph = 1, ddx_data%params%nsph
+               do igrid = 1, ddx_data%params%ngrid
+   
+                  dsdr(isph, k, asph, bsph, igrid, :) = dvdr(isph, k, asph, bsph, igrid, :)/vv_tensor(asph, bsph, igrid) &
+                     & - v_tensor(asph, bsph, igrid, :) / (vv_tensor(asph, bsph, igrid)**3) &
+                     & * dot_product(v_tensor(asph, bsph, igrid, :), dvdr(isph, k, asph, bsph, igrid, :))
+   
+               end do
+            end do
+         end do
+      end do
+   end do
+
+
+end subroutine get_dsdr
+
+subroutine contract_grad_l_dynrad(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, dtdr, dsdr, dfidr)
+         type(ddx_type), intent(in) :: ddx_data
+         integer, intent(in):: isph
+      real(dp),  dimension(ddx_data%constants % nbasis,ddx_data% params % nsph), intent(in)    :: sigma
+      real(dp),  dimension(ddx_data%params % ngrid,ddx_data% params % nsph),       intent(in)    :: xi
+      real(dp),  dimension(ddx_data%constants % nbasis),      intent(inout) :: basloc, vplm
+      real(dp),  dimension(3, ddx_data%constants % nbasis),    intent(inout) :: dbsloc
+      real(dp),  dimension(ddx_data%params % lmax+1),      intent(inout) :: vcos, vsin
+      real(dp),  dimension(3),           intent(inout) :: fx
+      real(dp), intent(in), optional :: dtdr(:,:,:,:,:)
+      real(dp), intent(in), optional :: dsdr(:,:,:,:,:,:)
+      real(dp), intent(in), optional :: dfidr(:,:,:,:)
+
+      fx = zero
+
+      call contract_gradi_Lik_new(ddx_data, isph, sigma, xi(:, isph), basloc, dbsloc, vplm, vcos, vsin, fx, &
+         & dtdr=dtdr, dsdr=dsdr, dfidr=dfidr) 
+      call contract_gradi_Lji_new(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, &
+         & dtdr=dtdr, dsdr=dsdr, dfidr=dfidr) 
+      call contract_gradi_Ljk_new(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, &
+         & dtdr=dtdr, dsdr=dsdr)
+
+
+end subroutine contract_grad_l_dynrad
+
+subroutine contract_gradi_Lik_new(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, dtdr, dsdr, dfidr)
+ type(ddx_type), intent(in) :: ddx_data
+   integer,                         intent(in)    :: isph
+   real(dp),  dimension(ddx_data%constants % nbasis,ddx_data% params % nsph), intent(in)    :: sigma
+   real(dp),  dimension(ddx_data%params % ngrid),       intent(in)    :: xi
+   real(dp),  dimension(ddx_data%constants % nbasis),      intent(inout) :: basloc, vplm
+   real(dp),  dimension(3, ddx_data%constants % nbasis),    intent(inout) :: dbsloc
+   real(dp),  dimension(ddx_data%params % lmax+1),      intent(inout) :: vcos, vsin
+   real(dp),  dimension(3),           intent(inout) :: fx
+   real(dp), intent(in), optional :: dtdr(:,:,:,:,:)
+   real(dp), intent(in), optional :: dsdr(:,:,:,:,:,:)
+   real(dp), intent(in), optional :: dfidr(:,:,:,:)
+   real(dp), allocatable :: z_alt(:,:,:)
+   integer :: ig, ij, jsph, l, ind, m, msph, nsph
+   real(dp)  :: vvij, tij, dtij(3), xij, oij, t, fac, fl, f1, f2, f3, beta, tlow, thigh
+   real(dp)  :: vij(3), sij(3), dsij(3,3), alp(3), alp1(3), alp2(3), va(3), deriv(3) !, dchidtdr(3)
+   real(dp), external :: dnrm2
+   tlow  = one - pt5*(one - ddx_data% params % se)*ddx_data%params % eta
+   thigh = one + pt5*(one + ddx_data%params % se)*ddx_data%params % eta
+
+   nsph = ddx_data%params%nsph
+
+   allocate(z_alt(nsph, 3, ddx_data%params%ngrid), source=0.0_dp)
+   do jsph = 1, nsph
+   do msph = 1, nsph
+   if (msph == jsph) cycle
+      z_alt(msph, :, :) = z_alt(msph, :, :) - dfidr(jsph, :, msph, :)
+   end do
+   end do
+
+   do ig = 1, ddx_data%params % ngrid
+     va = zero
+     do jsph = 1, nsph
+      if (isph == jsph) cycle
+       vij  = ddx_data%params % csph(:,isph) + &
+           & ddx_data%params % rsph(isph)*ddx_data%constants % cgrid(:,ig) - &
+           & ddx_data%params % csph(:,jsph)
+       vvij = dnrm2(3, vij, 1)
+       tij  = vvij/ddx_data%params % rsph(jsph)
+      dsij = dsdr(isph, :, isph, jsph, ig, :)
+      dtij = dtdr(isph, :, isph, jsph, ig)
+
+
+      sij  = vij/vvij
+      call dbasis(ddx_data%params, ddx_data%constants, sij, basloc, dbsloc, vplm, vcos, vsin)
+      alp  = zero
+      alp1 = zero
+      alp2 = zero
+      t    = one
+      do l = 1, ddx_data%params % lmax
+      ind = l*l + l + 1
+      fl  = dble(l)
+      fac = t/(ddx_data%constants % vscales(ind)**2)    
+         do m = -l, l
+           f2 = fac*sigma(ind+m,jsph)
+           f1 = f2*fl*basloc(ind+m)
+
+           alp1(:) = f1*dtij 
+           alp2(:) = f2*tij* matmul(dsij, dbsloc(:,ind+m))
+
+
+           alp(:) = alp(:) + alp1(:) + alp2(:)
+         end do
+         t = t*tij
+       end do
+       beta = intmlp(ddx_data%params,ddx_data% constants, tij,sigma(:,jsph),basloc)
+       xij = fsw(tij, ddx_data%params % se,ddx_data% params % eta)
+       if (ddx_data%constants % fi(ig,isph).gt.one) then
+         oij = xij/ddx_data%constants % fi(ig,isph)
+         f2  = -oij/ddx_data%constants % fi(ig,isph)
+       else
+         oij = xij
+         f2  = zero
+       end if
+       f1 = oij 
+       va(:) = va(:) + f1*alp(:) + beta*f2*z_alt(isph, :, ig)  !*ddx_data%constants % zi(:,ig,isph)
+         f3 = beta*dfsw(tij,ddx_data%params % se,ddx_data%params % eta) !/params % rsph(jsph)
+         if (ddx_data%constants % fi(ig,isph).gt.one) f3 = f3/ddx_data%constants % fi(ig,isph)
+         va(:) = va(:) + f3*dtij 
+     end do
+     fx = fx - ddx_data%constants % wgrid(ig)*va(:)*xi(ig)
+   end do
+end subroutine contract_gradi_Lik_new
+
+
+!> Contribution to the gradients of the ddCOSMO matrix
+subroutine contract_gradi_Lji_new(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, dtdr, dsdr, dfidr)
+ type(ddx_type), intent(in) :: ddx_data
+   integer,                         intent(in)    :: isph
+   real(dp),  dimension(ddx_data%constants % nbasis, ddx_data%params % nsph), intent(in)    :: sigma
+   real(dp),  dimension(ddx_data%params % ngrid, ddx_data%params % nsph),  intent(in)    :: xi
+   real(dp),  dimension(ddx_data%constants % nbasis),      intent(inout) :: basloc, vplm
+   real(dp),  dimension(3, ddx_data%constants % nbasis),    intent(inout) :: dbsloc
+   real(dp),  dimension(ddx_data%params % lmax+1),      intent(inout) :: vcos, vsin
+   real(dp),  dimension(3),           intent(inout) :: fx
+   real(dp), intent(in), optional :: dtdr(:,:,:,:,:)
+   real(dp), intent(in), optional :: dsdr(:,:,:,:,:,:)
+   real(dp), intent(in), optional :: dfidr(:,:,:,:)
+
+   integer :: ig, ji, jsph, l, ind, m, jk, ksph, msph, nsph
+   logical :: proc
+   real(dp)  :: vvji, tji, xji, oji, t, fac, fl, f1, f2, f3(3), beta, di, tlow, thigh, deriv1, deriv2(3), g3(3)
+   real(dp)  :: b, b2, g1, g2, vvjk, tjk, dtji(3), dtjk(3), xjk, vjm(3), vvjm, tjm, dtjm(3), deriv(3)
+   real(dp)  :: vji(3), sji(3), dsji(3,3), alp(3), alp1(3), alp2(3), vb(3), vjk(3), sjk(3), vc(3)
+   real(dp) :: rho, ctheta, stheta, cphi, sphi, delta1, delta2
+   real(dp), external :: dnrm2
+   real(dp), allocatable :: z_alt(:,:,:)
+
+   nsph = ddx_data%params%nsph
+
+   allocate(z_alt(nsph, 3, ddx_data%params%ngrid), source=0.0_dp)
+   do jsph = 1, nsph
+      z_alt(:, :, :) = z_alt(:, :, :) + dfidr(:, :, isph, :)
+   end do
+
+
+   tlow  = one - pt5*(one -ddx_data% params % se)*ddx_data%params % eta
+   thigh = one + pt5*(one +ddx_data% params % se)*ddx_data%params % eta
+
+   do ig = 1, ddx_data%params % ngrid
+     vb = zero
+     vc = zero
+     do jsph = 1, nsph
+      if (isph == jsph) cycle
+       vji  = ddx_data%params % csph(:,jsph) + &
+           &ddx_data% params % rsph(jsph)*ddx_data%constants % cgrid(:,ig) - &
+           & ddx_data%params % csph(:,isph)
+       vvji = dnrm2(3, vji, 1)
+       tji  = vvji/ddx_data%params % rsph(isph)
+
+      dsji = dsdr(isph, :, jsph, isph, ig, :)
+      dtji = dtdr(isph, :, jsph, isph, ig)
+
+       sji  = vji/vvji
+
+       call dbasis(ddx_data%params, ddx_data%constants, sji, basloc, dbsloc, vplm, vcos, vsin)
+
+       alp = zero
+       t   = one
+       do l = 1, ddx_data%params % lmax
+         ind = l*l + l + 1
+         fl  = dble(l)
+         ! 4pi/2l+1 * t^l-1 
+         fac = t/(ddx_data%constants % vscales(ind)**2)
+         do m = -l, l
+           ! 4pi/2l+1 * t^l-1 * sigma 
+           f2 = fac*sigma(ind+m,isph)
+           ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm
+           f1 = f2*fl*basloc(ind+m)
+
+           ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+           alp1(:) = f1*dtji 
+           ! 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij
+           alp2(:) = f2*tji*matmul(dsji, dbsloc(:,ind+m)) 
+
+           alp = alp + alp1 + alp2
+
+         end do
+         t = t*tji
+       end do
+
+       xji = fsw(tji, ddx_data%params % se, ddx_data%params % eta)
+       ! omega = chi*fi V 1/fi
+       if (ddx_data%constants % fi(ig,jsph).gt.one) then
+         oji = xji/ddx_data%constants % fi(ig,jsph)
+       else
+         oji = xji
+       end if
+       f1 = oji 
+
+       ! vb = sum_ig sum_j omega * [ 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+       ! + 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij ] * S
+       vb = vb - f1*alp*xi(ig,jsph)
+       
+         ! sum_lm 4pi/(2l+1) * t^l * Y_l^m( s ) * sigma_l^m
+         beta = intmlp(ddx_data%params, ddx_data%constants, tji, sigma(:,isph), basloc)
+         if (ddx_data%constants % fi(ig,jsph) .gt. one) then
+           di  = one/ddx_data%constants % fi(ig,jsph)
+           fac = di*xji
+           delta1 = 1
+           delta2 = 0
+         else
+           di  = one
+           fac = zero
+           delta1 = 0
+           delta2 = 1
+         end if
+
+         deriv = zero
+         do msph = 1, nsph
+            if (msph==jsph) cycle 
+            vjm = ddx_data%params % csph(:,jsph) + &
+                  & ddx_data% params % rsph(jsph)*ddx_data%constants % cgrid(:,ig) - &
+                  & ddx_data%params % csph(:,msph)
+            vvjm = dnrm2(3, vjm, 1)
+            tjm  = vvjm/ddx_data%params % rsph(msph)
+            dtjm = dtdr(isph, :, jsph, msph, ig)
+            ! dchidtdr_m = dchidr(isph, :, isph, msph, ig)
+            ! sum_m chi' nab^i tjm
+            deriv  = deriv + dfsw(tjm, ddx_data%params % se, ddx_data%params % eta) * dtjm
+         end do
+         ! (1-omega/0) * di * chi' * dtji
+        ! f3 = -(one-fac)*di*dfsw(tji, ddx_data%params % se, ddx_data%params % eta) * dtji !/ddx_data%params % rsph(isph)
+         ! f3 = - di * dfsw(tji, ddx_data%params % se, ddx_data%params % eta) * dtji &
+            ! & + fac * di * di * fsw(tji, ddx_data%params % se, ddx_data%params % eta) * deriv
+         f3 = - delta2 * di * dfsw(tji, ddx_data%params % se, ddx_data%params % eta) * dtji &
+             & + delta1 * (-di* dfsw(tji, ddx_data%params % se, ddx_data%params % eta) * dtji &
+                           & + di * fac * deriv) 
+         vb = vb + f3*beta*xi(ig,jsph) 
+         
+     end do
+     fx = fx + ddx_data%constants % wgrid(ig)*(vb)
+   end do
+end subroutine contract_gradi_Lji_new
+
+
+
+subroutine contract_gradi_Ljk_new(ddx_data, isph, sigma, xi, basloc, dbsloc, vplm, vcos, vsin, fx, dtdr, dsdr) 
+type(ddx_type), intent(in) :: ddx_data
+  integer,                         intent(in)    :: isph
+  real(dp),  dimension(ddx_data%constants % nbasis, ddx_data%params % nsph), intent(in)    :: sigma
+  real(dp),  dimension(ddx_data%params % ngrid, ddx_data%params % nsph),  intent(in)    :: xi
+  real(dp),  dimension(ddx_data%constants % nbasis),      intent(inout) :: basloc, vplm
+  real(dp),  dimension(3, ddx_data%constants % nbasis),    intent(inout) :: dbsloc
+  real(dp),  dimension(ddx_data%params % lmax+1),      intent(inout) :: vcos, vsin
+  real(dp),  dimension(3),           intent(inout) :: fx
+  real(dp), intent(in), optional :: dtdr(:,:,:,:,:)
+  real(dp), intent(in), optional :: dsdr(:,:,:,:,:,:)
+
+  integer :: ig, ji, jsph, l, ind, m, jk, ksph, msph, jm, nsph
+  logical :: proc
+  real(dp)  :: vvji, tji, xji, oji, t, fac, fl, f1, f2, beta, di, tlow, thigh
+  real(dp)  :: b(3), g1(3), g2(3), vvjk, tjk, xjk, tjm, vjm(3), vvjm 
+  real(dp)  :: vji(3), sji(3), dtji(3), dtjm(3), alp(3), vb(3), vjk(3), sjk(3), vc(3)
+  real(dp)  :: alp1(3), alp2(3), dsji(3,3), dsjk(3,3), dtjk(3), ojk, ddtjk 
+  real(dp) :: rho, ctheta, stheta, cphi, sphi, deriv(3) !, dchidtdr(3), dchidtdr_m(3)
+  real(dp), external :: dnrm2
+
+  tlow  = one - pt5*(one -ddx_data% params % se)*ddx_data%params % eta
+  thigh = one + pt5*(one +ddx_data% params % se)*ddx_data%params % eta
+
+  nsph = ddx_data%params%nsph
+
+
+  do ig = 1, ddx_data%params%ngrid
+   vc =  zero
+   do jsph = 1, nsph
+      if (jsph == isph) cycle
+
+         ! domega/dR
+         deriv = zero
+
+         ! di=1/fi 
+         if (ddx_data%constants % fi(ig,jsph) .gt. one) then
+           di  = one/ddx_data%constants % fi(ig,jsph)
+           b    = zero
+           do ksph = 1, nsph
+            if (ksph == jsph) cycle
+             vjk  = ddx_data%params % csph(:,jsph) + &
+                 & ddx_data%params % rsph(jsph)*ddx_data%constants % cgrid(:,ig) - &
+                 & ddx_data%params % csph(:,ksph)
+             vvjk = dnrm2(3, vjk, 1)
+             tjk  = vvjk/ddx_data%params % rsph(ksph)
+             dtjk = dtdr(isph, :, jsph, ksph, ig)
+             dsjk = dsdr(isph, :, jsph, ksph, ig, :)
+             sjk  = vjk/vvjk
+
+             if (ksph.ne.isph) then
+                 sjk  = vjk/vvjk
+                  ! Derivative of Ylm and t 
+                  call dbasis(ddx_data%params, ddx_data%constants, sjk, basloc, dbsloc, vplm, vcos, vsin)
+                  alp = zero 
+                  alp1 = zero
+                  alp2 = zero
+                  t = one
+                  do l = 1, ddx_data%params % lmax
+                     ind = l*l + l + 1
+                     fl  = dble(l)
+                     ! 4pi/2l+1 * t^l-1 
+                     fac = t/(ddx_data%constants % vscales(ind)**2)
+                     do m = -l, l
+                       ! 4pi/2l+1 * t^l-1 * sigma 
+                       f2 = fac*sigma(ind+m,ksph)
+                       ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm
+                       f1 = f2*fl*basloc(ind+m)
+          
+                       ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+                       alp1(:) = f1*dtjk !sji/ddx_data%params % rsph(isph) !dt
+                       ! 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij
+                       alp2(:) = f2*tjk*matmul(dsjk, dbsloc(:,ind+m)) !/(tji*ddx_data%params % rsph(isph)) !ds
+          
+                       alp = alp + alp1 + alp2
+          
+                     end do
+                     t = t*tjk
+                   end do
+
+                   xjk = fsw(tjk, ddx_data%params % se, ddx_data%params % eta)
+                   ! omega = chi*fi V 1/fi
+                   if (ddx_data%constants % fi(ig,jsph).gt.one) then
+                     ojk = xjk/ddx_data%constants % fi(ig,jsph)
+                   else
+                     ojk = xjk
+                   end if
+                   f1 = ojk 
+                
+                   ! vb = sum_ig sum_j omega * [ 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+                   ! + 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij ] * S
+                   vc = vc + f1*alp*xi(ig,jsph)
+
+                 call ylmbas(sjk, rho, ctheta, stheta, cphi, sphi, &
+                     & ddx_data%params % lmax, ddx_data%constants % vscales, basloc, vplm, &
+                     & vcos, vsin)
+                 ! g1 = \sum_lm 4pi/2l+1 tjk^l Ylm sigma_k
+                 g1  = intmlp(ddx_data%params, ddx_data%constants, tjk, sigma(:,ksph), basloc)
+                 xjk = fsw(tjk,ddx_data% params % se, ddx_data%params % eta)
+
+                 deriv = zero
+                 do msph = 1, nsph
+                 if (msph==jsph) cycle
+                  vjm = ddx_data%params % csph(:,jsph) + &
+                        & ddx_data% params % rsph(jsph)*ddx_data%constants % cgrid(:,ig) - &
+                        & ddx_data%params % csph(:,msph)
+                  vvjm = dnrm2(3, vjm, 1)
+                  tjm  = vvjm/ddx_data%params % rsph(msph)
+                  dtjm = dtdr(isph, :, jsph, msph, ig)
+                  ! sum_m chi' nab^i tjm
+                  deriv  = deriv + dfsw(tjm, ddx_data%params % se, ddx_data%params % eta) * dtjm
+                 end do
+                 ! chi_jk
+                 xjk = fsw(tjk,ddx_data% params % se, ddx_data%params % eta)
+                 ! sum_m chi' nab^i tjm * di * di * chi_jk
+                 deriv = - deriv * xjk * di * di !* dfsw(tji, ddx_data%params % se, ddx_data%params % eta) * dtji 
+                 ! sum_m chi' nab^i tjm * di * di * chi_jk + chi' nab^i tjk
+                 deriv = deriv + di * dfsw(tjk, ddx_data%params % se, ddx_data%params % eta) &
+                        & * dtdr(isph, :, jsph, ksph, ig)
+
+                 vc  = vc + g1 * deriv * xi(ig,jsph) 
+             end if
+           end do
+         else
+           b    = zero
+           do ksph = 1, nsph
+            if (ksph == jsph) cycle
+             vjk  = ddx_data%params % csph(:,jsph) + &
+                 & ddx_data%params % rsph(jsph)*ddx_data%constants % cgrid(:,ig) - &
+                 & ddx_data%params % csph(:,ksph)
+             vvjk = dnrm2(3, vjk, 1)
+             tjk  = vvjk/ddx_data%params % rsph(ksph)
+
+             dtjk = dtdr(isph, :, jsph, ksph, ig)
+             dsjk = dsdr(isph, :, jsph, ksph, ig, :)
+             sjk  = vjk/vvjk
+             if (ksph.ne.isph) then
+               ! if (tjk .le. thigh) then
+                 sjk  = vjk/vvjk
+                  ! Derivative of Ylm and t 
+                 call dbasis(ddx_data%params, ddx_data%constants, sjk, basloc, dbsloc, vplm, vcos, vsin)
+
+                  alp = zero 
+                  alp1 = zero
+                  alp2 = zero
+                  t = one
+                  do l = 1, ddx_data%params % lmax
+                     ind = l*l + l + 1
+                     fl  = dble(l)
+                     ! 4pi/2l+1 * t^l-1 
+                     fac = t/(ddx_data%constants % vscales(ind)**2)
+                     do m = -l, l
+                       ! 4pi/2l+1 * t^l-1 * sigma 
+                       f2 = fac*sigma(ind+m,ksph)
+                       ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm
+                       f1 = f2*fl*basloc(ind+m)
+          
+                       ! 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+                       alp1(:) = f1*dtjk !sji/ddx_data%params % rsph(isph) !dt
+                       ! 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij
+                       alp2(:) = f2*tjk*matmul(dsjk, dbsloc(:,ind+m)) !/(tji*ddx_data%params % rsph(isph)) !ds
+          
+                       alp = alp + alp1 + alp2
+          
+                     end do
+                     t = t*tjk
+                  end do
+
+                  xjk = fsw(tjk, ddx_data%params % se, ddx_data%params % eta)
+                  ! omega = chi*fi V 1/fi
+                  if (ddx_data%constants % fi(ig,jsph).gt.one) then
+                  ojk = xjk/ddx_data%constants % fi(ig,jsph)
+                  else
+                  ojk = xjk
+                  end if
+                  f1 = ojk !/ddx_data%params % rsph(isph)
+               
+                  ! vb = sum_ig sum_j omega * [ 4pi/2l+1 * t^l-1 * sigma * l * Ylm * \nab tij
+                  ! + 4pi/2l+1 * t^l * sigma * \nab Ylm * \nab sij ] * S
+                  vc = vc + f1*alp*xi(ig,jsph)
+
+
+                  call ylmbas(sjk, rho, ctheta, stheta, cphi, sphi, &
+                        & ddx_data%params % lmax, ddx_data%constants % vscales, basloc, vplm, &
+                        & vcos, vsin)
+                  ! g1 = sum_lm 4pi/2l+1 tjk^l Ylm sigma_k
+                  g1  = intmlp(ddx_data%params, ddx_data%constants, tjk, sigma(:,ksph), basloc)
+                  ! chi' nab^i tjk
+                  deriv = dfsw(tjk, ddx_data%params % se, ddx_data%params % eta) &
+                           & * dtdr(isph, :, jsph, ksph, ig)
+
+                  vc = vc + g1 * deriv * xi(ig,jsph)  !/ddx_data%params % rsph(isph)*sji
+                     
+             end if
+           end do
+
+         
+          
+         end if
+      end do
+      fx = fx + ddx_data % constants % wgrid(ig)*(-vc)
+   
+   end do
+
+
+
+
+
+end subroutine contract_gradi_Ljk_new
+
+
+
+
+
+
+
+
+
 
 end module ddx_gradients
